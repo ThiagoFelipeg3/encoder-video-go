@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,4 +27,17 @@ func TestVideoIdIsnotAUuid(t *testing.T) {
 	err := video.Validate()
 
 	require.Error(t, err)
+}
+
+func TestVideoValidation(t *testing.T) {
+	video := domain.NewVideo()
+
+	video.ID = uuid.NewV4().String()
+	video.ResourceID = "any_resourceID"
+	video.FilePath = "any_path"
+	video.CreatedAt = time.Now()
+
+	err := video.Validate()
+
+	require.Nil(t, err)
 }
