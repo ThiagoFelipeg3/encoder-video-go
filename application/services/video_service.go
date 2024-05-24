@@ -7,13 +7,15 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 
 	"cloud.google.com/go/storage"
 )
 
 type VideoService struct {
-	Video           *domain.Video
-	VideoRepository repositories.VideoRepository
+	Video            *domain.Video
+	VideoRepository  repositories.VideoRepository
+	localStoragePath string
 }
 
 func NewVideoService() VideoService {
@@ -57,4 +59,39 @@ func (v *VideoService) Download(bucketName string) error {
 	log.Printf("video %v has been stored", v.Video.ID)
 
 	return nil
+}
+
+func (v *VideoService) Fragment() error {
+
+	err := os.Mkdir(os.Getenv("localStoragePath")+"/"+v.Video.ID, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	source := v.getLocalStoragePath(v.Video.ID, "mp4")
+	target := v.getLocalStoragePath(v.Video.ID, "frag")
+
+	cmd := exec.Command("mp4fragment", source, target)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return err
+	}
+
+	printOutput(output)
+
+	return nil
+}
+
+func printOutput(out []byte) {
+	if len(out) > 0 {
+		log.Printf("=====> Output: %s\n", string(out))
+	}
+}
+
+func (v *VideoService) getLocalStoragePath(videoId string, videoType string) string {
+	if v.localStoragePath == "" {
+		v.localStoragePath = os.Getenv("localStoragePath")
+	}
+
+	return v.localStoragePath + "/" + videoId + "." + videoType
 }
