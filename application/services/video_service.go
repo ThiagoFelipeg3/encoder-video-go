@@ -1,15 +1,17 @@
 package services
 
 import (
-	"context"
 	"encoder/application/repositories"
 	"encoder/domain"
-	"io/ioutil"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 
-	"cloud.google.com/go/storage"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
 type VideoService struct {
@@ -23,40 +25,38 @@ func NewVideoService() VideoService {
 }
 
 func (v *VideoService) Download(bucketName string) error {
-	ctx := context.Background()
+	// Create a file to write the S3 Object contents to.
+	fileName := os.Getenv("LOCAL_STORAGE_PATH") + "/" + v.Video.ID + ".mp4"
 
-	client, err := storage.NewClient(ctx)
+	f, err := os.Create(fileName)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file %q, %v", fileName, err)
 	}
 
-	bkt := client.Bucket(bucketName)
-	obj := bkt.Object(v.Video.FilePath)
+	// The session the S3 Downloader will use
+	sess := session.Must(session.NewSession(&aws.Config{Region: aws.String("us-east-1")}))
 
-	r, err := obj.NewReader(ctx)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	body, err := ioutil.ReadAll(r)
-	if err != nil {
-		return err
+	_, errCre := sess.Config.Credentials.Get()
+	if errCre != nil {
+		return fmt.Errorf("failed to credential, %v", err)
 	}
 
-	f, err := os.Create(os.Getenv("LOCAL_STORAGE_PATH") + "/" + v.Video.ID + ".mp4")
+	// Create a downloader with the session and default options
+	downloader := s3manager.NewDownloader(sess)
+
+	// Write the contents of S3 Object to the file
+	n, err := downloader.Download(f, &s3.GetObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(v.Video.FilePath),
+	})
+
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download file, %v", err)
 	}
 
-	_, err = f.Write(body)
-	if err != nil {
-		return err
-	}
+	fmt.Printf("file downloaded, %d bytes\n", n)
 
 	defer f.Close()
-
-	log.Printf("video %v has been stored", v.Video.ID)
 
 	return nil
 }
